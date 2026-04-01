@@ -1,7 +1,10 @@
 import math
 import os.path
 import re
+import shutil
+from datetime import datetime
 from os import path
+from typing import Dict, List, Tuple
 
 from loguru import logger
 
@@ -11,6 +14,94 @@ from app.models.schema import VideoConcatMode, VideoParams
 from app.services import llm, material, subtitle, video, voice
 from app.services import state as sm
 from app.utils import utils
+
+
+def _normalize_material_tags(tags) -> List[str]:
+    if not tags:
+        return []
+    if isinstance(tags, str):
+        source = re.split(r"[,，\s]+", tags)
+    elif isinstance(tags, list):
+        source = tags
+    else:
+        return []
+
+    result = []
+    for tag in source:
+        value = str(tag).strip().lower()
+        if value and value not in result:
+            result.append(value)
+    return result
+
+
+def _infer_group_from_path(file_path: str) -> str:
+    file_name = os.path.splitext(os.path.basename(file_path))[0]
+    if "__" in file_name:
+        return file_name.split("__", 1)[0].strip().lower()
+    if "-" in file_name:
+        return file_name.split("-", 1)[0].strip().lower()
+    return file_name.strip().lower()
+
+
+def _estimate_material_download_duration(params: VideoParams) -> float:
+    # Materials-only mode does not have audio yet, so estimate a practical target duration.
+    clips_per_video = int(config.app.get("materials_only_target_clips", 8) or 8)
+    clips_per_video = max(3, min(clips_per_video, 40))
+    total_clips = clips_per_video * max(1, int(params.video_count or 1))
+    return float(total_clips * max(1, int(params.video_clip_duration or 5)))
+
+
+def _sanitize_topic_name(topic: str) -> str:
+    topic = (topic or "").strip().lower()
+    topic = re.sub(r"[^\w\u4e00-\u9fff-]+", "_", topic)
+    topic = re.sub(r"_+", "_", topic).strip("_")
+    return topic or "untitled"
+
+
+def _build_topic_from_params(params: VideoParams) -> str:
+    if params.video_subject and params.video_subject.strip():
+        return params.video_subject.strip()
+
+    terms = params.video_terms
+    if isinstance(terms, str):
+        parts = [t.strip() for t in re.split(r"[,，]", terms) if t.strip()]
+        if parts:
+            return parts[0]
+    if isinstance(terms, list) and terms:
+        first_term = str(terms[0]).strip()
+        if first_term:
+            return first_term
+
+    return "untitled"
+
+
+def _archive_materials_by_topic(task_id: str, params: VideoParams, material_paths: List[str]) -> Tuple[List[str], str]:
+    if not material_paths:
+        return [], ""
+
+    topic_slug = _sanitize_topic_name(_build_topic_from_params(params))
+    batch_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{task_id[:8]}"
+    archive_dir = os.path.join(utils.storage_dir("local_videos", create=True), topic_slug, batch_name)
+    os.makedirs(archive_dir, exist_ok=True)
+
+    archived_files = []
+    for i, src in enumerate(material_paths, 1):
+        if not os.path.exists(src):
+            continue
+        ext = os.path.splitext(src)[1] or ".mp4"
+        content_hash = utils.md5(src)[:8]
+        dst_name = f"{topic_slug}_{i:03d}_{content_hash}{ext}"
+        dst_path = os.path.join(archive_dir, dst_name)
+        if os.path.exists(dst_path):
+            dst_name = f"{topic_slug}_{i:03d}_{content_hash}_{utils.get_uuid(remove_hyphen=True)[:6]}{ext}"
+            dst_path = os.path.join(archive_dir, dst_name)
+        shutil.copy2(src, dst_path)
+        archived_files.append(dst_path)
+
+    logger.info(
+        f"materials archived by topic => topic={topic_slug}, batch={batch_name}, files={len(archived_files)}, dir={archive_dir}"
+    )
+    return archived_files, archive_dir
 
 
 def generate_script(task_id, params):
@@ -160,7 +251,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     return subtitle_path
 
 
-def get_video_materials(task_id, params, video_terms, audio_duration):
+def get_video_materials(task_id, params, video_terms, audio_duration, max_items: int = 0) -> Tuple[List[str], Dict[str, dict]]:
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
@@ -171,8 +262,16 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             logger.error(
                 "no valid materials found, please check the materials and try again."
             )
-            return None
-        return [material_info.url for material_info in materials]
+            return [], {}
+
+        material_paths = [material_info.url for material_info in materials]
+        material_catalog = {}
+        for material_info in materials:
+            material_catalog[material_info.url] = {
+                "group": (material_info.group or _infer_group_from_path(material_info.url)),
+                "tags": _normalize_material_tags(material_info.tags),
+            }
+        return material_paths, material_catalog
     else:
         logger.info(f"\n\n## downloading videos from {params.video_source}")
         downloaded_videos = material.download_videos(
@@ -181,20 +280,29 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             source=params.video_source,
             video_aspect=params.video_aspect,
             video_contact_mode=params.video_concat_mode,
-            audio_duration=audio_duration * params.video_count,
+            audio_duration=audio_duration,
             max_clip_duration=params.video_clip_duration,
+            max_items=max_items,
         )
         if not downloaded_videos:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
             logger.error(
                 "failed to download videos, maybe the network is not available. if you are in China, please use a VPN."
             )
-            return None
-        return downloaded_videos
+            return [], {}
+
+        material_catalog = {}
+        normalized_terms = _normalize_material_tags(video_terms)
+        for video_path in downloaded_videos:
+            material_catalog[video_path] = {
+                "group": _infer_group_from_path(video_path),
+                "tags": normalized_terms,
+            }
+        return downloaded_videos, material_catalog
 
 
 def generate_final_videos(
-    task_id, params, downloaded_videos, audio_file, subtitle_path
+    task_id, params, downloaded_videos, material_catalog, audio_file, subtitle_path, video_script
 ):
     final_video_paths = []
     combined_video_paths = []
@@ -210,6 +318,7 @@ def generate_final_videos(
             utils.task_dir(task_id), f"combined-{index}.mp4"
         )
         logger.info(f"\n\n## combining video: {index} => {combined_video_path}")
+        sequence_seed = f"{task_id}:{os.path.basename(combined_video_path)}"
         video.combine_videos(
             combined_video_path=combined_video_path,
             video_paths=downloaded_videos,
@@ -219,6 +328,11 @@ def generate_final_videos(
             video_transition_mode=video_transition_mode,
             max_clip_duration=params.video_clip_duration,
             threads=params.n_threads,
+            sequence_seed=sequence_seed,
+            sequence_index=i,
+            material_catalog=material_catalog,
+            script_text=video_script,
+            transition_duration=params.video_transition_duration or 0.35,
         )
 
         _progress += 50 / params.video_count / 2
@@ -281,6 +395,41 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         )
         return {"script": video_script, "terms": video_terms}
 
+    if stop_at == "materials":
+        target_duration = _estimate_material_download_duration(params)
+        target_items = int(getattr(params, "materials_download_count", 0) or 0)
+        if target_items <= 0:
+            target_items = int(config.ui.get("materials_download_count", 0) or 0)
+        downloaded_videos, material_catalog = get_video_materials(
+            task_id, params, video_terms, target_duration, max_items=target_items
+        )
+        if not downloaded_videos:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            return
+
+        archived_materials, archive_dir = _archive_materials_by_topic(
+            task_id=task_id,
+            params=params,
+            material_paths=downloaded_videos,
+        )
+        display_materials = archived_materials or downloaded_videos
+
+        sm.state.update_task(
+            task_id,
+            state=const.TASK_STATE_COMPLETE,
+            progress=100,
+            materials=display_materials,
+            raw_materials=downloaded_videos,
+            materials_archive_dir=archive_dir,
+            material_catalog=material_catalog,
+        )
+        return {
+            "materials": display_materials,
+            "raw_materials": downloaded_videos,
+            "materials_archive_dir": archive_dir,
+            "material_catalog": material_catalog,
+        }
+
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=20)
 
     # 3. Generate audio
@@ -319,8 +468,8 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
 
     # 5. Get video materials
-    downloaded_videos = get_video_materials(
-        task_id, params, video_terms, audio_duration
+    downloaded_videos, material_catalog = get_video_materials(
+        task_id, params, video_terms, audio_duration * params.video_count
     )
     if not downloaded_videos:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -339,7 +488,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 6. Generate final videos
     final_video_paths, combined_video_paths = generate_final_videos(
-        task_id, params, downloaded_videos, audio_file, subtitle_path
+        task_id, params, downloaded_videos, material_catalog, audio_file, subtitle_path, video_script
     )
 
     if not final_video_paths:

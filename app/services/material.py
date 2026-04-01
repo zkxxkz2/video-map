@@ -1,6 +1,7 @@
 import os
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 from urllib.parse import urlencode
 
@@ -111,27 +112,54 @@ def search_videos_pexels(
         "Authorization": api_key,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     }
-    # Build URL with extended options from config.
     per_page = int(config.app.get("pexels_per_page", 20))
     per_page = min(max(per_page, 1), 80)
-    params = {
-        "query": search_term,
-        "per_page": per_page,
-        "orientation": video_orientation,
-    }
-
-    pexels_size = str(config.app.get("pexels_size", "")).strip().lower()
-    if pexels_size in {"small", "medium", "large"}:
-        params["size"] = pexels_size
-
-    pexels_locale = str(config.app.get("pexels_locale", "")).strip()
-    if pexels_locale:
-        params["locale"] = pexels_locale
-
+    
     pexels_page = int(config.app.get("pexels_page", 1) or 1)
-    params["page"] = max(1, pexels_page)
+    page_num = max(1, pexels_page)
 
-    query_url = f"https://api.pexels.com/v1/videos/search?{urlencode(params)}"
+    endpoint_mode = str(config.app.get("pexels_endpoint", "search")).strip().lower()
+    
+    if endpoint_mode == "popular":
+        params = {
+            "per_page": per_page,
+            "page": page_num
+        }
+        
+        min_width = int(config.app.get("pexels_min_width", 0))
+        if min_width > 0: params["min_width"] = min_width
+        
+        min_height = int(config.app.get("pexels_min_height", 0))
+        if min_height > 0: params["min_height"] = min_height
+
+        min_duration_pop = int(config.app.get("pexels_min_duration", 0))
+        if min_duration_pop > 0: params["min_duration"] = min_duration_pop
+
+        max_duration_pop = int(config.app.get("pexels_max_duration", 0))
+        if max_duration_pop > 0: params["max_duration"] = max_duration_pop
+        
+        query_url = f"https://api.pexels.com/v1/videos/popular?{urlencode(params)}"
+    else:
+        # User defined orientation overrides global aspect orientation
+        user_ori = str(config.app.get("pexels_orientation", "auto")).strip().lower()
+        active_ori = user_ori if user_ori in {"landscape", "portrait", "square"} else video_orientation
+        
+        params = {
+            "query": search_term,
+            "per_page": per_page,
+            "page": page_num,
+            "orientation": active_ori,
+        }
+
+        pexels_size = str(config.app.get("pexels_size", "")).strip().lower()
+        if pexels_size in {"small", "medium", "large"}:
+            params["size"] = pexels_size
+
+        pexels_locale = str(config.app.get("pexels_locale", "")).strip()
+        if pexels_locale:
+            params["locale"] = pexels_locale
+
+        query_url = f"https://api.pexels.com/v1/videos/search?{urlencode(params)}"
     logger.info(f"searching videos: {query_url}, with proxies: {config.proxy}")
 
     try:
@@ -284,6 +312,7 @@ def download_videos(
     video_contact_mode: VideoConcatMode = VideoConcatMode.random,
     audio_duration: float = 0.0,
     max_clip_duration: int = 5,
+    max_items: int = 0,
 ) -> List[str]:
     valid_video_items = []
     valid_video_urls = []
@@ -321,24 +350,110 @@ def download_videos(
         random.shuffle(valid_video_items)
 
     total_duration = 0.0
-    for item in valid_video_items:
-        try:
-            logger.info(f"downloading video: {item.url}")
-            saved_video_path = save_video(
-                video_url=item.url, save_dir=material_directory
-            )
-            if saved_video_path:
-                logger.info(f"video saved: {saved_video_path}")
-                video_paths.append(saved_video_path)
-                seconds = min(max_clip_duration, item.duration)
-                total_duration += seconds
-                if total_duration > audio_duration:
+    required_duration = max(0.0, float(audio_duration or 0.0))
+    workers = int(config.app.get("video_download_workers", 4) or 4)
+    workers = max(1, min(workers, 16))
+    max_items = int(max_items or 0)
+    enforce_duration_limit = required_duration > 0 and max_items <= 0
+    duplicate_skipped = 0
+    failed_count = 0
+    empty_result_count = 0
+    logger.info(
+        f"download strategy => workers={workers}, required_duration={required_duration:.2f}s, max_items={max_items}, enforce_duration_limit={enforce_duration_limit}, candidates={len(valid_video_items)}"
+    )
+
+    if workers == 1:
+        for item in valid_video_items:
+            try:
+                logger.info(f"downloading video: {item.url}")
+                saved_video_path = save_video(
+                    video_url=item.url, save_dir=material_directory
+                )
+                if not saved_video_path:
+                    empty_result_count += 1
+                    continue
+
+                if saved_video_path in video_paths:
+                    duplicate_skipped += 1
+                    continue
+
+                if saved_video_path and saved_video_path not in video_paths:
+                    logger.info(f"video saved: {saved_video_path}")
+                    video_paths.append(saved_video_path)
+                    if max_items > 0 and len(video_paths) >= max_items:
+                        logger.info(f"reached max_items={max_items}, stop downloading more")
+                        break
+                    total_duration += min(max_clip_duration, item.duration)
+                    if enforce_duration_limit and total_duration > required_duration:
+                        logger.info(
+                            f"total duration of downloaded videos: {total_duration} seconds, skip downloading more"
+                        )
+                        break
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"failed to download video: {utils.to_json(item)} => {str(e)}")
+    else:
+        def _download_one(index: int, item: MaterialInfo):
+            logger.info(f"downloading video[{index + 1}]: {item.url}")
+            saved_video_path = save_video(video_url=item.url, save_dir=material_directory)
+            return index, saved_video_path, min(max_clip_duration, item.duration)
+
+        future_to_item = {}
+        accepted_paths = set()
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            for idx, item in enumerate(valid_video_items):
+                future = executor.submit(_download_one, idx, item)
+                future_to_item[future] = item
+
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
+                try:
+                    _, saved_video_path, seconds = future.result()
+                    if not saved_video_path:
+                        empty_result_count += 1
+                        continue
+                    if saved_video_path in accepted_paths:
+                        duplicate_skipped += 1
+                        continue
+
+                    accepted_paths.add(saved_video_path)
+                    video_paths.append(saved_video_path)
+                    if max_items > 0 and len(video_paths) >= max_items:
+                        logger.info(f"reached max_items={max_items}, stop accepting more results")
+                        break
+                    total_duration += seconds
                     logger.info(
-                        f"total duration of downloaded videos: {total_duration} seconds, skip downloading more"
+                        f"video saved: {saved_video_path}, collected={total_duration:.2f}s"
                     )
-                    break
-        except Exception as e:
-            logger.error(f"failed to download video: {utils.to_json(item)} => {str(e)}")
+
+                    if enforce_duration_limit and total_duration > required_duration:
+                        logger.info(
+                            f"total duration of downloaded videos: {total_duration} seconds, stop accepting more results"
+                        )
+                        break
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(
+                        f"failed to download video: {utils.to_json(item)} => {str(e)}"
+                    )
+
+            for future in future_to_item:
+                if not future.done():
+                    future.cancel()
+
+    requested_items = max_items if max_items > 0 else None
+    shortfall = 0
+    if requested_items is not None:
+        shortfall = max(0, requested_items - len(video_paths))
+
+    logger.info(
+        "download diagnostics => "
+        f"requested_items={requested_items if requested_items is not None else '-'}, "
+        f"downloaded={len(video_paths)}, shortfall={shortfall}, "
+        f"candidates={len(valid_video_items)}, duplicate_skipped={duplicate_skipped}, "
+        f"failed={failed_count}, empty_result={empty_result_count}, "
+        f"duration_collected={total_duration:.2f}s"
+    )
     logger.success(f"downloaded {len(video_paths)} videos")
     return video_paths
 

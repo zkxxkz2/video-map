@@ -1,6 +1,7 @@
 import os
 import platform
 import sys
+import threading
 from uuid import uuid4
 
 import streamlit as st
@@ -41,151 +42,302 @@ st.set_page_config(
 )
 
 
-streamlit_style = """
+
+if "theme_mode" not in st.session_state:
+    st.session_state["theme_mode"] = "Light" # Default
+
+# Decide CSS variables based on theme
+if st.session_state["theme_mode"] == "Dark":
+    theme_css = """
+    :root {
+        --vm-bg-main: #0e1117;
+        --vm-bg-sidebar: #161b22;
+        --vm-panel: #1c2128;
+        --vm-panel-hover: #22272e;
+        --vm-border: #30363d;
+        --vm-text-primary: #e6edf3;
+        --vm-text-muted: #9eabb8;
+        --vm-accent: #2ea043;
+        --vm-accent-hover: #3fb950;
+        --widget-bg: #161b22;
+    }
+    """
+else:
+    theme_css = """
+    :root {
+        --vm-bg-main: #ffffff;
+        --vm-bg-sidebar: #f6f8fa;
+        --vm-panel: #ffffff;
+        --vm-panel-hover: #f0f2f5;
+        --vm-border: #d0d7de;
+        --vm-text-primary: #1f2328;
+        --vm-text-muted: #59636e;
+        --vm-accent: #1f883d;
+        --vm-accent-hover: #2ea043;
+        --widget-bg: #ffffff;
+    }
+    """
+
+streamlit_style = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-:root {
-    --vm-bg-0: #0b1119;
-    --vm-bg-1: #131d2a;
-    --vm-panel: #141f2d;
-    --vm-panel-strong: #182536;
-    --vm-border: #2b3f57;
-    --vm-text: #e8f0fb;
-    --vm-muted: #9cb2cc;
-    --vm-accent: #10b981;
-    --vm-accent-2: #0ea5a7;
-}
+{theme_css}
 
-html, body, [class*="css"] {
-    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-    color: var(--vm-text);
-    color-scheme: dark;
-}
+html, body, [class*="css"] {{
+    font-family: "Inter", -apple-system, sans-serif;
+    color: var(--vm-text-primary) !important;
+    background-color: var(--vm-bg-main) !important;
+}}
 
-[data-testid="stApp"],
-.stApp,
-section.main {
-    background: transparent !important;
-}
+/* Force text visibility across ALL widgets */
+input, textarea, select, [data-baseweb="select"] span,
+[data-baseweb="select"] div, .stSelectbox label, .stTextInput label,
+.stNumberInput label, .stSlider label, .stRadio label, .stCheckbox label,
+.stTextArea label, p, span, li, td, th {{
+    color: var(--vm-text-primary) !important;
+}}
+[data-testid="stWidgetLabel"] label, [data-testid="stWidgetLabel"] p {{
+    color: var(--vm-text-primary) !important;
+}}
+.stSelectbox [data-baseweb="select"] > div {{
+    color: var(--vm-text-primary) !important;
+    background-color: var(--widget-bg) !important;
+}}
 
-[data-testid="stAppViewContainer"] {
-    background:
-        radial-gradient(circle at 8% 4%, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0) 32%),
-        radial-gradient(circle at 92% 7%, rgba(14, 165, 167, 0.14) 0%, rgba(14, 165, 167, 0) 34%),
-        linear-gradient(145deg, var(--vm-bg-0) 0%, var(--vm-bg-1) 100%);
-}
+/* Fix Dropdown Popovers - Ensure contrast for the opened menu */
+div[data-baseweb="popover"] {{
+    z-index: 999999 !important;
+}}
+div[data-baseweb="popover"] ul {{
+    background-color: var(--vm-panel) !important;
+    border: 1px solid var(--vm-border) !important;
+    padding: 4px !important;
+}}
+div[data-baseweb="popover"] li {{
+    background-color: transparent !important;
+    color: var(--vm-text-primary) !important;
+    transition: background-color 0.2s !important;
+}}
+div[data-baseweb="popover"] li:hover {{
+    background-color: var(--vm-panel-hover) !important;
+    color: var(--vm-text-primary) !important;
+}}
+/* Fix for the selected/highlighted state inside the dropdown */
+div[data-baseweb="popover"] [aria-selected="true"] {{
+    background-color: var(--vm-accent) !important;
+    color: #ffffff !important;
+}}
 
-[data-testid="stHeader"] {
-    background: transparent;
-}
+/* Fix st.code / Log Container visibility across themes - More aggressive */
+.stCodeBlock, 
+[data-testid="stCodeBlock"], 
+pre, 
+code {{
+    background-color: var(--vm-panel) !important;
+    color: var(--vm-text-primary) !important;
+    border: 1px solid var(--vm-border) !important;
+}}
 
-[data-testid="stToolbar"] {
-    background: transparent !important;
-}
+/* Override all internal syntax highlighting colors to ensure readability in light mode */
+[data-testid="stCodeBlock"] * {{
+    color: inherit !important;
+    background-color: transparent !important;
+    text-shadow: none !important;
+}}
 
-[data-testid="stMainBlockContainer"] {
-    padding-top: 1.2rem;
-    max-width: 1380px;
-}
+/* Fix File Uploader visibility across themes */
+[data-testid="stFileUploadDropzone"], 
+[data-testid="stFileUploaderSection"],
+.stFileUploader section {{
+    background-color: var(--vm-panel) !important;
+    background: var(--vm-panel) !important;
+    border: 1px dashed var(--vm-border) !important;
+    color: var(--vm-text-primary) !important;
+}}
 
-h1, h2, h3 {
-    font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
-    letter-spacing: 0.01em;
-    color: var(--vm-text);
-}
+/* Ensure all text inside the uploader is visible */
+[data-testid="stFileUploadDropzone"] div, 
+[data-testid="stFileUploadDropzone"] p, 
+[data-testid="stFileUploadDropzone"] span,
+[data-testid="stFileUploadDropzone"] small {{
+    color: var(--vm-text-primary) !important;
+}}
 
-h1 {
-    padding-top: 0 !important;
-    font-weight: 700;
-}
+/* Style the 'Browse files' button to match theme */
+[data-testid="stFileUploader"] button {{
+    background-color: var(--vm-panel) !important;
+    border: 1px solid var(--vm-border) !important;
+    color: var(--vm-text-primary) !important;
+}}
 
-[data-testid="stMarkdownContainer"] p,
-label,
-.stCaption,
-.st-ae,
-.st-aw {
-    color: var(--vm-muted) !important;
-}
+/* Fix File Uploader List - Make it scrollable and compact */
+[data-testid="stFileUploaderList"] {{
+    max-height: 220px !important;
+    overflow-y: auto !important;
+    padding-right: 10px !important;
+    border: 1px solid var(--vm-border) !important;
+    border-radius: 4px !important;
+    margin-top: 10px !important;
+    background-color: rgba(0,0,0,0.02) !important;
+}}
 
-[data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 16px;
+/* Base app backgrounds */
+.stApp {{
+    background-color: var(--vm-bg-main);
+}}
+
+[data-testid="stHeader"], 
+header[data-testid="stHeader"], 
+.stHeader, 
+[data-testid="stToolbar"] {{
+    background-color: var(--vm-bg-main) !important;
+    background: var(--vm-bg-main) !important;
+    color: var(--vm-text-primary) !important;
+}}
+
+[data-testid="stSidebar"] {{
+    background-color: var(--vm-bg-sidebar) !important;
+    border-right: 1px solid var(--vm-border);
+}}
+
+/* Compact layout for editing workspace */
+[data-testid="stMainBlockContainer"] {{
+    padding-top: 1.5rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    max-width: 1600px;
+}}
+
+/* Workspace Header */
+.vm-workspace-header {{
+    margin: 0 0 1rem 0;
+    padding: 0.8rem 1.2rem;
+    border-radius: 6px;
     border: 1px solid var(--vm-border);
     background: var(--vm-panel);
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
-}
-
-[data-testid="stExpander"] {
+    border-left: 4px solid var(--vm-accent);
+}}
+.vm-workspace-title {{
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: var(--vm-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}}
+.vm-workspace-version {{
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--vm-accent);
+    background: rgba(46, 160, 67, 0.15);
+    padding: 2px 8px;
     border-radius: 12px;
-    border: 1px solid var(--vm-border);
-    background: var(--vm-panel-strong);
-}
+    border: 1px solid rgba(46, 160, 67, 0.3);
+}}
+.vm-workspace-desc {{
+    font-size: 0.85rem;
+    color: var(--vm-text-muted);
+    margin-top: 0.4rem;
+}}
 
-[data-baseweb="tab-list"] {
-    gap: 0.4rem;
-}
-
-button[data-baseweb="tab"] {
-    border-radius: 10px !important;
+/* Containers mapping to panels */
+[data-testid="stVerticalBlockBorderWrapper"] {{
+    border-radius: 6px !important;
     border: 1px solid var(--vm-border) !important;
-    background: #122133 !important;
-    color: var(--vm-muted) !important;
-}
+    background-color: var(--vm-panel) !important;
+    box-shadow: none !important;
+    padding: 0.5rem !important;
+}}
 
-button[data-baseweb="tab"][aria-selected="true"] {
-    background: linear-gradient(135deg, #123445, #15434b) !important;
-    border-color: #1f6f76 !important;
-    color: var(--vm-text) !important;
-}
+/* FIX TRUNCATION: Remove aggressive padding and height restrictions for inputs */
+[data-baseweb="select"] > div, 
+.stTextInput > div > div > input, 
+.stTextArea textarea, 
+.stNumberInput input {{
+    border-radius: 4px !important;
+    border: 1px solid var(--vm-border) !important;
+    background-color: var(--widget-bg) !important;
+    color: var(--vm-text-primary) !important;
+    /* Do not force font-size or padding here to avoid breaking Streamlit's native input sizes */
+}}
 
-button[kind="primary"] {
-    border-radius: 12px !important;
-    border: 1px solid #21d294 !important;
-    background: linear-gradient(135deg, var(--vm-accent) 0%, var(--vm-accent-2) 100%) !important;
-    color: #041018 !important;
+/* Buttons */
+button[kind="primary"] {{
+    border-radius: 4px !important;
+    background-color: var(--vm-accent) !important;
+    border: 1px solid rgba(240,246,252,0.1) !important;
+    color: #ffffff !important;
+    font-weight: 500 !important;
+    transition: background-color 0.2s;
+}}
+button[kind="primary"]:hover {{
+    background-color: var(--vm-accent-hover) !important;
+}}
+button[kind="secondary"] {{
+    border-radius: 4px !important;
+    background-color: var(--vm-panel) !important;
+    border: 1px solid var(--vm-border) !important;
+    transition: background-color 0.2s;
+}}
+button[kind="secondary"]:hover {{
+    border-color: var(--vm-text-muted) !important;
+}}
+
+/* Typography and metrics */
+h1, h2, h3, label, .stMarkdown p {{
+    color: var(--vm-text-primary) !important;
+}}
+label, .stCaption {{
+    color: var(--vm-text-muted) !important;
+}}
+[data-testid="stMetricValue"] {{
+    color: var(--vm-text-primary) !important;
+    font-size: 1.5rem !important;
     font-weight: 600 !important;
-}
+}}
+[data-testid="stMetricLabel"] {{
+    color: var(--vm-text-muted) !important;
+    font-size: 0.85rem !important;
+}}
 
-button[kind="secondary"] {
-    border-radius: 10px !important;
-    background: #152436 !important;
-    border: 1px solid var(--vm-border) !important;
-    color: #d7e5f7 !important;
-}
+/* Expanders */
+[data-testid="stExpander"] {{
+    border: 1px solid var(--vm-border);
+    border-radius: 4px;
+    background-color: var(--vm-bg-main);
+}}
 
-[data-baseweb="select"] > div,
-.stTextInput > div > div > input,
-.stTextArea textarea,
-.stNumberInput input {
-    border-radius: 10px !important;
-    border: 1px solid var(--vm-border) !important;
-    background: #101a28 !important;
-    color: #e7effc !important;
-}
+/* Tabs */
+button[data-baseweb="tab"] {{
+    border-radius: 4px 4px 0 0 !important;
+}}
 
-.stTextArea textarea {
-    min-height: 220px;
-}
+/* Custom Thin Scrollbar */
+::-webkit-scrollbar {{
+    width: 6px;
+    height: 6px;
+}}
+::-webkit-scrollbar-track {{
+    background: transparent;
+}}
+::-webkit-scrollbar-thumb {{
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+}}
+::-webkit-scrollbar-thumb:hover {{
+    background: rgba(255, 255, 255, 0.3);
+}}
 
-[data-testid="stMetricValue"] {
-    color: #f7fbff !important;
-}
+/* Hover Depth for Containers */
+[data-testid="stVerticalBlockBorderWrapper"]:hover,
+[data-testid="stExpander"]:hover {{
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: box-shadow 0.2s ease-in-out;
+}}
 
-[data-testid="stMetricLabel"] {
-    color: #9eb4ce !important;
-}
-
-[data-testid="stNotification"] {
-    border-radius: 12px;
-}
-
-@media (max-width: 960px) {
-    [data-testid="stMainBlockContainer"] {
-        padding-top: 0.7rem;
-        padding-left: 0.7rem;
-        padding-right: 0.7rem;
-    }
-}
+/* Floating Primary Button */
+/* Removed due to user feedback indicating it floats too high and blocks content */
 </style>
 """
 st.markdown(streamlit_style, unsafe_allow_html=True)
@@ -210,42 +362,43 @@ if "ui_language" not in st.session_state:
 # 加载语言文件
 locales = utils.load_locales(i18n_dir)
 
-# 创建一个顶部栏，包含标题和语言选择
-title_col, lang_col = st.columns([3, 1])
+# Title moved to workspace header for high-density layout
 
-with title_col:
-    st.title(f"Video-Map v{config.project_version}")
-
-with lang_col:
+with st.sidebar:
+    theme_toggle = st.radio("界面主题", ["Light", "Dark"], horizontal=True, index=0 if st.session_state["theme_mode"] == "Light" else 1)
+    if theme_toggle != st.session_state["theme_mode"]:
+        st.session_state["theme_mode"] = theme_toggle
+        st.rerun()
+        
+    st.header("全局设置")
+    # 仅保留简体中文和英文的界面语言
+    allowed_ui_langs = ["zh", "en"]
     display_languages = []
     selected_index = 0
-    for i, code in enumerate(locales.keys()):
+    filtered_codes = [c for c in locales.keys() if c in allowed_ui_langs]
+    for i, code in enumerate(filtered_codes):
         display_languages.append(f"{code} - {locales[code].get('Language')}")
         if code == st.session_state.get("ui_language", ""):
             selected_index = i
 
     selected_language = st.selectbox(
-        "Language / 语言",
+        "界面语言",
         options=display_languages,
         index=selected_index,
         key="top_language_selector",
-        label_visibility="collapsed",
     )
     if selected_language:
         code = selected_language.split(" - ")[0].strip()
         st.session_state["ui_language"] = code
         config.ui["language"] = code
+        
+    st.divider()
 
 support_locales = [
     "zh-CN",
-    "zh-HK",
     "zh-TW",
-    "de-DE",
     "en-US",
-    "fr-FR",
-    "vi-VN",
-    "th-TH",
-    "tr-TR",
+    "ja-JP",
 ]
 
 
@@ -341,26 +494,20 @@ def tr(key):
 
 
 # 创建基础设置折叠框
-if not config.app.get("hide_config", False):
-    with st.expander(tr("Basic Settings"), expanded=False):
-        config_panels = st.columns(3)
-        left_config_panel = config_panels[0]
-        middle_config_panel = config_panels[1]
-        right_config_panel = config_panels[2]
+if True: # Removed conditional hide_config check per user request
+
+    with st.sidebar:
+        st.subheader(tr("引擎与API配置 (Engine & API)"))
+        
+        left_config_panel = st.container()
+        middle_config_panel = st.container()
+        right_config_panel = st.container()
 
         # 左侧面板 - 日志设置
         with left_config_panel:
-            # 是否隐藏配置面板
-            hide_config = st.checkbox(
-                tr("Hide Basic Settings"), value=config.app.get("hide_config", False)
-            )
-            config.app["hide_config"] = hide_config
+            st.write(tr("Log Settings"))
+            # Removed Hide Basic Settings and Hide Log toggles per user feedback
 
-            # 是否禁用日志显示
-            hide_log = st.checkbox(
-                tr("Hide Log"), value=config.ui.get("hide_log", False)
-            )
-            config.ui["hide_log"] = hide_log
 
         # 中间面板 - LLM 设置
 
@@ -550,7 +697,7 @@ if not config.app.get("hide_config", False):
 
             if tips and config.ui["language"] == "zh":
                 st.warning(
-                    "中国用户建议使用 **DeepSeek** 或 **Moonshot** 作为大模型提供商\n- 国内可直接访问，不需要VPN \n- 注册就送额度，基本够用"
+                    "国内用户建议使用 **DeepSeek** 或 **Moonshot** 作为大模型提供商\n- 国内可直接访问，不需要VPN \n- 注册就送额度，基本够用"
                 )
                 st.info(tips)
 
@@ -618,35 +765,126 @@ if not config.app.get("hide_config", False):
             )
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
+        with st.expander(tr("Click to show API Key management"), expanded=False):
+            st.subheader(tr("Manage Pexels and Pixabay API Keys"))
+
+            col1, col2 = st.tabs(["Pexels API Keys", "Pixabay API Keys"])
+
+            with col1:
+                st.subheader("Pexels API Keys")
+                if config.app["pexels_api_keys"]:
+                    st.write(tr("Current Keys:"))
+                    for key in config.app["pexels_api_keys"]:
+                        st.code(key)
+                else:
+                    st.info(tr("No Pexels API Keys currently"))
+
+                new_key = st.text_input(tr("Add Pexels API Key"), key="pexels_new_key")
+                if st.button(tr("Add Pexels API Key")):
+                    if new_key and new_key not in config.app["pexels_api_keys"]:
+                        config.app["pexels_api_keys"].append(new_key)
+                        config.save_config()
+                        st.success(tr("Pexels API Key added successfully"))
+                    elif new_key in config.app["pexels_api_keys"]:
+                        st.warning(tr("This API Key already exists"))
+                    else:
+                        st.error(tr("Please enter a valid API Key"))
+
+                if config.app["pexels_api_keys"]:
+                    delete_key = st.selectbox(
+                        tr("Select Pexels API Key to delete"), config.app["pexels_api_keys"], key="pexels_delete_key"
+                    )
+                    if st.button(tr("Delete Selected Pexels API Key")):
+                        config.app["pexels_api_keys"].remove(delete_key)
+                        config.save_config()
+                        st.success(tr("Pexels API Key deleted successfully"))
+
+            with col2:
+                st.subheader("Pixabay API Keys")
+
+                if config.app["pixabay_api_keys"]:
+                    st.write(tr("Current Keys:"))
+                    for key in config.app["pixabay_api_keys"]:
+                        st.code(key)
+                else:
+                    st.info(tr("No Pixabay API Keys currently"))
+
+                new_key = st.text_input(tr("Add Pixabay API Key"), key="pixabay_new_key")
+                if st.button(tr("Add Pixabay API Key")):
+                    if new_key and new_key not in config.app["pixabay_api_keys"]:
+                        config.app["pixabay_api_keys"].append(new_key)
+                        config.save_config()
+                        st.success(tr("Pixabay API Key added successfully"))
+                    elif new_key in config.app["pixabay_api_keys"]:
+                        st.warning(tr("This API Key already exists"))
+                    else:
+                        st.error(tr("Please enter a valid API Key"))
+
+                if config.app["pixabay_api_keys"]:
+                    delete_key = st.selectbox(
+                        tr("Select Pixabay API Key to delete"), config.app["pixabay_api_keys"], key="pixabay_delete_key"
+                    )
+                    if st.button(tr("Delete Selected Pixabay API Key")):
+                        config.app["pixabay_api_keys"].remove(delete_key)
+                        config.save_config()
+                        st.success(tr("Pixabay API Key deleted successfully"))
+
+
 llm_provider = config.app.get("llm_provider", "").lower()
 st.markdown(
     """
-<div style="margin: 0.3rem 0 1rem 0; padding: 0.8rem 1rem; border-radius: 12px; border: 1px solid #2b3f57; background: linear-gradient(120deg,#142335,#1a2f43); color:#e9f2ff;">
-  <div style="font-weight:700; font-family:'Space Grotesk',sans-serif;">Production Workbench</div>
-  <div style="font-size:0.92rem; opacity:0.88; margin-top:0.2rem;">脚本、素材、音频、字幕都在同一工作流中配置，生成行为保持不变。</div>
+<div class="vm-workspace-header">
+  <div class="vm-workspace-title">
+    Video-Map <span class="vm-workspace-version">v1.0.0</span>
+  </div>
+  <div class="vm-workspace-desc"><b>创作工作台</b> | 脚本、素材、音频、字幕都在同一工作流中配置，生成行为保持不变。</div>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
-work_tabs = st.tabs([
-    "Script Lab",
-    "Media & Audio",
-    "Subtitles & Keys",
-])
-left_panel = work_tabs[0]
-middle_panel = work_tabs[1]
-right_panel = work_tabs[2]
+work_columns = st.columns([1.1, 1, 1], gap="small")
+left_panel = work_columns[0]
+middle_panel = work_columns[1]
+right_panel = work_columns[2]
 
 params = VideoParams(video_subject="")
 uploaded_files = []
 
 with left_panel:
-    script_cfg_col, script_out_col = st.columns([0.95, 1.25], gap="medium")
 
-    with script_cfg_col:
+
+    if True: # was script_cfg_col
         with st.container(border=True):
-            st.write("Script Controls")
+            st.write("脚本控制")
+            subject_presets = [
+                "",
+                "城市夜景",
+                "自然风光",
+                "旅行Vlog",
+                "美食探店",
+                "科技数码",
+                "商业财经",
+                "汽车机车",
+                "健身运动",
+                "宠物日常",
+                "历史人文",
+                "影视混剪",
+            ]
+            selected_subject_preset = st.selectbox(
+                tr("Subject Presets"),
+                options=subject_presets,
+                index=0,
+                help=tr("Choose a preset and apply it to Video Subject"),
+            )
+            if selected_subject_preset and st.button(
+                tr("Apply Subject Preset"),
+                key="apply_subject_preset",
+                use_container_width=True,
+            ):
+                st.session_state["video_subject"] = selected_subject_preset
+                st.rerun()
+
             params.video_subject = st.text_input(
                 tr("Video Subject"),
                 value=st.session_state["video_subject"],
@@ -687,15 +925,15 @@ with left_panel:
 
             st.caption("先生成完整文案，再用文案生成关键词，匹配度更稳定。")
 
-    with script_out_col:
+    if True: # was script_out_col
         with st.container(border=True):
-            st.write("Script Outputs")
+            st.write("视频设置")
             params.video_script = st.text_area(
                 tr("Video Script"), value=st.session_state["video_script"], height=300
             )
 
-            action_cols = st.columns([1, 1])
-            with action_cols[0]:
+
+            if True: # was action_cols
                 if st.button(tr("Generate Video Keywords"), key="auto_generate_terms", use_container_width=True):
                     if not params.video_script:
                         st.error(tr("Please Enter the Video Subject"))
@@ -743,40 +981,63 @@ with middle_panel:
         config.app["video_source"] = params.video_source
 
         if params.video_source == "pexels":
-            with st.expander("Pexels API Advanced", expanded=False):
+            with st.expander("Pexels API 高级设置", expanded=False):
+                pexels_mode_options = ["Search", "Popular"]
+                current_mode = config.app.get("pexels_endpoint", "search").capitalize()
+                
+                selected_mode = st.radio("Pexels 抓取模式", pexels_mode_options, index=pexels_mode_options.index(current_mode) if current_mode in pexels_mode_options else 0, horizontal=True, help="Search: 根据关键词搜索。Popular: 获取当下流行的无关键词素材。")
+                config.app["pexels_endpoint"] = selected_mode.lower()
+                
                 pexels_per_page = int(config.app.get("pexels_per_page", 20))
                 pexels_per_page = min(max(pexels_per_page, 1), 80)
                 config.app["pexels_per_page"] = st.slider(
-                    "Pexels per_page", min_value=1, max_value=80, value=pexels_per_page
+                    "每页请求数量", min_value=1, max_value=80, value=pexels_per_page, help="单次API请求返回的素材最大数量。"
                 )
-
-                pexels_size_options = ["auto", "small", "medium", "large"]
-                saved_size = config.app.get("pexels_size", "")
-                if saved_size not in ["", "small", "medium", "large"]:
-                    saved_size = ""
-                size_index = pexels_size_options.index(saved_size if saved_size else "auto")
-                selected_size = st.selectbox(
-                    "Pexels size",
-                    options=pexels_size_options,
-                    index=size_index,
-                )
-                config.app["pexels_size"] = "" if selected_size == "auto" else selected_size
-
-                config.app["pexels_locale"] = st.text_input(
-                    "Pexels locale (optional)",
-                    value=config.app.get("pexels_locale", ""),
-                    help="Examples: en-US, zh-CN, ja-JP",
-                ).strip()
 
                 pexels_page = int(config.app.get("pexels_page", 1) or 1)
                 pexels_page = max(1, pexels_page)
                 config.app["pexels_page"] = st.number_input(
-                    "Pexels page",
-                    min_value=1,
-                    max_value=999,
-                    value=pexels_page,
-                    step=1,
+                    "起始页码", min_value=1, value=pexels_page, help="如果同一关键词想换一批素材，可以增加此页码。"
                 )
+
+                if config.app["pexels_endpoint"] == "popular":
+                    st.write("---")
+                    st.write("热门接口专属参数 (Popular API)")
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        config.app["pexels_min_width"] = st.number_input("最小宽度 (min_width)", min_value=0, value=int(config.app.get("pexels_min_width", 0)), help="筛选画面宽度（像素）。不填填 0 即可。")
+                        config.app["pexels_min_duration"] = st.number_input("最小时长 (min_duration)", min_value=0, value=int(config.app.get("pexels_min_duration", 0)), help="最小视频片段的时长（秒）。")
+                    with col_p2:
+                        config.app["pexels_min_height"] = st.number_input("最小高度 (min_height)", min_value=0, value=int(config.app.get("pexels_min_height", 0)), help="筛选画面高度（像素）。不填填 0 即可。")
+                        config.app["pexels_max_duration"] = st.number_input("最大时长 (max_duration)", min_value=0, value=int(config.app.get("pexels_max_duration", 0)), help="最大视频片段的时长（秒）。")
+                        
+                    if config.app["pexels_max_duration"] > 0 and config.app["pexels_min_duration"] > config.app["pexels_max_duration"]:
+                        st.error("⚠️ 最小时长不能大于最大时长，请修正。 (Min duration cannot exceed max duration)")
+                else:
+                    st.write("---")
+                    st.write("搜索接口专属参数 (Search API)")
+                    
+                    pexels_orientation_opts = ["auto", "landscape", "portrait", "square"]
+                    saved_orientation = config.app.get("pexels_orientation", "auto")
+                    selected_ori = st.selectbox("强制画面方向", pexels_orientation_opts, index=pexels_orientation_opts.index(saved_orientation) if saved_orientation in pexels_orientation_opts else 0, help="强制指定 API 搜索的横竖比例，不选则跟随全局配置自动推断。")
+                    config.app["pexels_orientation"] = selected_ori
+
+                    pexels_size_options = ["auto", "small", "medium", "large"]
+                    saved_size = config.app.get("pexels_size", "")
+                    size_index = pexels_size_options.index(saved_size if saved_size else "auto")
+                    selected_size = st.selectbox(
+                        "尺寸要求",
+                        options=pexels_size_options,
+                        index=size_index,
+                        help="可以指定仅搜索具有特定分辨率规模的视频（小、中、大）。"
+                    )
+                    config.app["pexels_size"] = "" if selected_size == "auto" else selected_size
+
+                    config.app["pexels_locale"] = st.text_input(
+                        "地区语言",
+                        value=config.app.get("pexels_locale", ""),
+                        help="特定语言地区的排序偏好，直接填入如 en-US, zh-CN, ja-JP 等标准识别码。",
+                    ).strip()
 
         if params.video_source == "local":
             uploaded_files = st.file_uploader(
@@ -818,6 +1079,20 @@ with middle_panel:
             video_transition_modes[selected_index][1]
         )
 
+        saved_transition_duration = float(
+            config.ui.get("video_transition_duration", params.video_transition_duration or 0.35)
+        )
+        saved_transition_duration = min(max(saved_transition_duration, 0.1), 1.5)
+        params.video_transition_duration = st.slider(
+            tr("Video Transition Duration"),
+            min_value=0.1,
+            max_value=1.5,
+            value=saved_transition_duration,
+            step=0.05,
+            help=tr("Set transition smoothness in seconds"),
+        )
+        config.ui["video_transition_duration"] = params.video_transition_duration
+
         video_aspect_ratios = [
             (tr("Portrait"), VideoAspect.portrait.value),
             (tr("Landscape"), VideoAspect.landscape.value),
@@ -838,23 +1113,42 @@ with middle_panel:
         )
         params.video_count = st.selectbox(
             tr("Number of Videos Generated Simultaneously"),
-            options=[1, 2, 3, 4, 5],
+            options=[1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100],
             index=0,
         )
+        saved_materials_download_count = int(config.ui.get("materials_download_count", 20) or 20)
+        saved_materials_download_count = max(1, min(saved_materials_download_count, 500))
+        selected_materials_download_count = int(
+            st.number_input(
+                tr("Materials Download Count"),
+                min_value=1,
+                max_value=500,
+                value=saved_materials_download_count,
+                step=1,
+                help=tr("Used by Download Materials Only mode"),
+            )
+        )
+        config.ui["materials_download_count"] = selected_materials_download_count
+        try:
+            params.materials_download_count = selected_materials_download_count
+        except ValueError:
+            # Backward compatibility: old schema without this field.
+            logger.warning("VideoParams has no field 'materials_download_count', using config.ui value as fallback")
+
+with right_panel:
     with st.container(border=True):
         st.write(tr("Audio Settings"))
 
         # 添加TTS服务器选择下拉框
         tts_servers = [
-            ("azure-tts-v1", "Azure TTS V1"),
-            ("azure-tts-v2", "Azure TTS V2"),
             ("siliconflow", "SiliconFlow TTS"),
-            ("gemini-tts", "Google Gemini TTS"),
             ("local-cosyvoice", "Local CosyVoice"),
         ]
 
-        # 获取保存的TTS服务器，默认为v1
-        saved_tts_server = config.ui.get("tts_server", "azure-tts-v1")
+        # 获取保存的TTS服务器，默认为 siliconflow
+        saved_tts_server = config.ui.get("tts_server", "siliconflow")
+        if saved_tts_server not in [s[0] for s in tts_servers]:
+            saved_tts_server = "siliconflow"
         saved_tts_server_index = 0
         for i, (server_value, _) in enumerate(tts_servers):
             if server_value == saved_tts_server:
@@ -947,6 +1241,7 @@ with middle_panel:
                     "No voices available for the selected TTS server. Please select another server."
                 )
             )
+            voice_name = ""
             params.voice_name = ""
             config.ui["voice_name"] = ""
 
@@ -1097,7 +1392,6 @@ with middle_panel:
             index=2,
         )
 
-with right_panel:
     with st.container(border=True):
         st.write(tr("Subtitle Settings"))
         params.subtitle_enabled = st.checkbox(tr("Enable Subtitles"), value=True)
@@ -1138,87 +1432,24 @@ with right_panel:
             except ValueError:
                 st.error(tr("Please enter a valid number"))
 
-        font_cols = st.columns([0.3, 0.7])
-        with font_cols[0]:
+
+        if True:
             saved_text_fore_color = config.ui.get("text_fore_color", "#FFFFFF")
             params.text_fore_color = st.color_picker(
                 tr("Font Color"), saved_text_fore_color
             )
             config.ui["text_fore_color"] = params.text_fore_color
 
-        with font_cols[1]:
+        if True:
             saved_font_size = config.ui.get("font_size", 60)
             params.font_size = st.slider(tr("Font Size"), 30, 100, saved_font_size)
             config.ui["font_size"] = params.font_size
 
-        stroke_cols = st.columns([0.3, 0.7])
-        with stroke_cols[0]:
+
+        if True:
             params.stroke_color = st.color_picker(tr("Stroke Color"), "#000000")
-        with stroke_cols[1]:
+        if True:
             params.stroke_width = st.slider(tr("Stroke Width"), 0.0, 10.0, 1.5)
-    with st.expander(tr("Click to show API Key management"), expanded=False):
-        st.subheader(tr("Manage Pexels and Pixabay API Keys"))
-
-        col1, col2 = st.tabs(["Pexels API Keys", "Pixabay API Keys"])
-
-        with col1:
-            st.subheader("Pexels API Keys")
-            if config.app["pexels_api_keys"]:
-                st.write(tr("Current Keys:"))
-                for key in config.app["pexels_api_keys"]:
-                    st.code(key)
-            else:
-                st.info(tr("No Pexels API Keys currently"))
-
-            new_key = st.text_input(tr("Add Pexels API Key"), key="pexels_new_key")
-            if st.button(tr("Add Pexels API Key")):
-                if new_key and new_key not in config.app["pexels_api_keys"]:
-                    config.app["pexels_api_keys"].append(new_key)
-                    config.save_config()
-                    st.success(tr("Pexels API Key added successfully"))
-                elif new_key in config.app["pexels_api_keys"]:
-                    st.warning(tr("This API Key already exists"))
-                else:
-                    st.error(tr("Please enter a valid API Key"))
-
-            if config.app["pexels_api_keys"]:
-                delete_key = st.selectbox(
-                    tr("Select Pexels API Key to delete"), config.app["pexels_api_keys"], key="pexels_delete_key"
-                )
-                if st.button(tr("Delete Selected Pexels API Key")):
-                    config.app["pexels_api_keys"].remove(delete_key)
-                    config.save_config()
-                    st.success(tr("Pexels API Key deleted successfully"))
-
-        with col2:
-            st.subheader("Pixabay API Keys")
-
-            if config.app["pixabay_api_keys"]:
-                st.write(tr("Current Keys:"))
-                for key in config.app["pixabay_api_keys"]:
-                    st.code(key)
-            else:
-                st.info(tr("No Pixabay API Keys currently"))
-
-            new_key = st.text_input(tr("Add Pixabay API Key"), key="pixabay_new_key")
-            if st.button(tr("Add Pixabay API Key")):
-                if new_key and new_key not in config.app["pixabay_api_keys"]:
-                    config.app["pixabay_api_keys"].append(new_key)
-                    config.save_config()
-                    st.success(tr("Pixabay API Key added successfully"))
-                elif new_key in config.app["pixabay_api_keys"]:
-                    st.warning(tr("This API Key already exists"))
-                else:
-                    st.error(tr("Please enter a valid API Key"))
-
-            if config.app["pixabay_api_keys"]:
-                delete_key = st.selectbox(
-                    tr("Select Pixabay API Key to delete"), config.app["pixabay_api_keys"], key="pixabay_delete_key"
-                )
-                if st.button(tr("Delete Selected Pixabay API Key")):
-                    config.app["pixabay_api_keys"].remove(delete_key)
-                    config.save_config()
-                    st.success(tr("Pixabay API Key deleted successfully"))
 
 profile_metrics = st.columns(4)
 profile_metrics[0].metric("Source", str(params.video_source).upper())
@@ -1226,10 +1457,18 @@ profile_metrics[1].metric("Aspect", str(params.video_aspect))
 profile_metrics[2].metric("Clip(s)", str(params.video_count))
 profile_metrics[3].metric("TTS", str(config.ui.get("tts_server", "-")).upper())
 
-start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
-if start_button:
+action_cols = st.columns(2)
+start_button = action_cols[0].button(
+    tr("Generate Video"), use_container_width=True, type="primary"
+)
+download_only_button = action_cols[1].button(
+    tr("Download Materials Only"), use_container_width=True
+)
+
+if start_button or download_only_button:
     config.save_config()
     task_id = str(uuid4())
+    run_mode = "materials" if download_only_button else "video"
     if not params.video_subject and not params.video_script:
         st.error(tr("Video Script and Subject Cannot Both Be Empty"))
         scroll_to_bottom()
@@ -1269,18 +1508,51 @@ if start_button:
     def log_received(msg):
         if config.ui["hide_log"]:
             return
-        with log_container:
-            log_records.append(msg)
-            st.code("\n".join(log_records))
+        # Streamlit UI updates must run on the main script thread.
+        if threading.current_thread() is not threading.main_thread():
+            return
+        try:
+            with log_container:
+                log_records.append(msg)
+                st.code("\n".join(log_records))
+        except Exception:
+            # Ignore transient context teardown errors when rerunning/stopping.
+            return
 
     logger.add(log_received)
 
-    st.toast(tr("Generating Video"))
-    logger.info(tr("Start Generating Video"))
+    if run_mode == "materials":
+        st.toast(tr("Downloading Materials"))
+        logger.info(tr("Start Downloading Materials"))
+    else:
+        st.toast(tr("Generating Video"))
+        logger.info(tr("Start Generating Video"))
     logger.info(utils.to_json(params))
     scroll_to_bottom()
 
-    result = tm.start(task_id=task_id, params=params)
+    result = tm.start(task_id=task_id, params=params, stop_at=run_mode)
+
+    if run_mode == "materials":
+        material_files = result.get("materials", []) if result else []
+        archive_dir = result.get("materials_archive_dir", "") if result else ""
+        if not material_files:
+            st.error(tr("Material Download Failed"))
+            logger.error(tr("Material Download Failed"))
+            scroll_to_bottom()
+            st.stop()
+
+        st.success(tr("Material Download Completed"))
+        if archive_dir:
+            st.info(f"{tr('Archive Directory')}: {archive_dir}")
+        with st.expander(tr("Downloaded Materials"), expanded=True):
+            for item in material_files:
+                st.write(item)
+
+        open_task_folder(task_id)
+        logger.info(tr("Material Download Completed"))
+        scroll_to_bottom()
+        st.stop()
+
     if not result or "videos" not in result:
         st.error(tr("Video Generation Failed"))
         logger.error(tr("Video Generation Failed"))

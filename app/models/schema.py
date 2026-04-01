@@ -51,6 +51,8 @@ class MaterialInfo:
     provider: str = "pexels"
     url: str = ""
     duration: int = 0
+    group: str = ""
+    tags: Optional[List[str]] = None
 
 
 class VideoParams(BaseModel):
@@ -74,8 +76,10 @@ class VideoParams(BaseModel):
     video_aspect: Optional[VideoAspect] = VideoAspect.portrait.value
     video_concat_mode: Optional[VideoConcatMode] = VideoConcatMode.random.value
     video_transition_mode: Optional[VideoTransitionMode] = None
+    video_transition_duration: Optional[float] = 0.35
     video_clip_duration: Optional[int] = 5
     video_count: Optional[int] = 1
+    materials_download_count: Optional[int] = 0
 
     video_source: Optional[str] = "pexels"
     video_materials: Optional[List[MaterialInfo]] = (

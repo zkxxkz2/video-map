@@ -76,7 +76,7 @@ project_description = _cfg.get(
     "project_description",
     "<a href='https://github.com/zkxxkz2/video-map'>https://github.com/zkxxkz2/video-map</a>",
 )
-project_version = _cfg.get("project_version", "1.2.6")
+project_version = _cfg.get("project_version", "1.0.0")
 reload_debug = False
 
 imagemagick_path = app.get("imagemagick_path", "")

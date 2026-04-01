@@ -140,6 +140,19 @@ subtitle_provider = "edge"
 # ffmpeg_path = "C:\\Users\\harry\\Downloads\\ffmpeg.exe"
 #########################################################################################
 
+# Video hardware acceleration strategy:
+#   auto   -> automatically choose the best available encoder
+#   off    -> force CPU encoding (libx264)
+#   nvidia -> force NVENC when available
+#   apple  -> force VideoToolbox when available (macOS)
+#   intel  -> force QSV when available
+#   amd    -> force AMF when available
+video_hardware_accel = "auto"
+
+# Optional manual encoder override. Keep "auto" unless you know what you're doing.
+# Examples: "h264_nvenc", "h264_videotoolbox", "h264_qsv", "h264_amf", "libx264"
+video_encoder = "auto"
+
 # 当视频生成成功后，API服务提供的视频下载接入点，默认为当前服务的地址和监听端口
 # 比如 http://127.0.0.1:8080/tasks/6357f542-a4e1-46a1-b4c9-bf3bd0df5285/final-1.mp4
 # 如果你需要使用域名对外提供服务（一般会用nginx做代理），则可以设置为你的域名
@@ -175,6 +188,13 @@ redis_password = ""
 
 # 文生视频时的最大并发任务数
 max_concurrent_tasks = 5
+
+# Number of concurrent workers for downloading material videos.
+# 1 means sequential; recommended 4-8 depending on network/disk performance.
+video_download_workers = 4
+
+# In materials-only mode (/api/v1/materials), estimate how many clips to fetch per output video.
+materials_only_target_clips = 8
 
 
 [whisper]

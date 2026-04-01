@@ -1,6 +1,7 @@
 import glob
 import os
 import pathlib
+import re
 import shutil
 from typing import Union
 
@@ -58,6 +59,13 @@ def create_video(
     background_tasks: BackgroundTasks, request: Request, body: TaskVideoRequest
 ):
     return create_task(request, body, stop_at="video")
+
+
+@router.post("/materials", response_model=TaskResponse, summary="Download video materials only")
+def download_materials_only(
+    background_tasks: BackgroundTasks, request: Request, body: TaskVideoRequest
+):
+    return create_task(request, body, stop_at="materials")
 
 
 @router.post("/subtitle", response_model=TaskResponse, summary="Generate subtitle only")
@@ -235,11 +243,24 @@ def get_video_materials_list(request: Request):
         files.extend(glob.glob(os.path.join(local_videos_dir, f"*.{suffix}")))
     video_materials_list = []
     for file in files:
+        file_name = os.path.splitext(os.path.basename(file))[0]
+        inferred_group = ""
+        if "__" in file_name:
+            inferred_group = file_name.split("__", 1)[0].strip().lower()
+        elif "-" in file_name:
+            inferred_group = file_name.split("-", 1)[0].strip().lower()
+        inferred_tags = [
+            token.lower()
+            for token in re.split(r"[,，\s_\-]+", file_name)
+            if token and len(token) > 1 and not token.isdigit()
+        ]
         video_materials_list.append(
             {
                 "name": os.path.basename(file),
                 "size": os.path.getsize(file),
                 "file": file,
+                "group": inferred_group,
+                "tags": inferred_tags,
             }
         )
     response = {"files": video_materials_list}
