@@ -46,14 +46,15 @@ streamlit_style = """
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
 :root {
-    --vm-bg-0: #f4f6f8;
-    --vm-bg-1: #e8edf2;
-    --vm-panel: rgba(255, 255, 255, 0.86);
-    --vm-panel-strong: rgba(255, 255, 255, 0.96);
-    --vm-border: rgba(17, 54, 83, 0.15);
-    --vm-text: #162330;
-    --vm-accent: #0e7490;
-    --vm-accent-2: #1f9bb5;
+    --vm-bg-0: #0b1119;
+    --vm-bg-1: #131d2a;
+    --vm-panel: #141f2d;
+    --vm-panel-strong: #182536;
+    --vm-border: #2b3f57;
+    --vm-text: #e8f0fb;
+    --vm-muted: #9cb2cc;
+    --vm-accent: #10b981;
+    --vm-accent-2: #0ea5a7;
 }
 
 html, body, [class*="css"] {
@@ -63,8 +64,8 @@ html, body, [class*="css"] {
 
 [data-testid="stAppViewContainer"] {
     background:
-        radial-gradient(circle at 10% 8%, rgba(31, 155, 181, 0.16) 0%, rgba(31, 155, 181, 0) 35%),
-        radial-gradient(circle at 90% 4%, rgba(14, 116, 144, 0.10) 0%, rgba(14, 116, 144, 0) 40%),
+        radial-gradient(circle at 8% 4%, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0) 32%),
+        radial-gradient(circle at 92% 7%, rgba(14, 165, 167, 0.14) 0%, rgba(14, 165, 167, 0) 34%),
         linear-gradient(145deg, var(--vm-bg-0) 0%, var(--vm-bg-1) 100%);
 }
 
@@ -80,6 +81,7 @@ html, body, [class*="css"] {
 h1, h2, h3 {
     font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
     letter-spacing: 0.01em;
+    color: var(--vm-text);
 }
 
 h1 {
@@ -87,29 +89,57 @@ h1 {
     font-weight: 700;
 }
 
+[data-testid="stMarkdownContainer"] p,
+label,
+.stCaption,
+.st-ae,
+.st-aw {
+    color: var(--vm-muted) !important;
+}
+
 [data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 18px;
+    border-radius: 16px;
     border: 1px solid var(--vm-border);
     background: var(--vm-panel);
-    box-shadow: 0 14px 34px rgba(18, 33, 53, 0.07);
-    backdrop-filter: blur(8px);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
 }
 
 [data-testid="stExpander"] {
-    border-radius: 14px;
+    border-radius: 12px;
     border: 1px solid var(--vm-border);
     background: var(--vm-panel-strong);
 }
 
+[data-baseweb="tab-list"] {
+    gap: 0.4rem;
+}
+
+button[data-baseweb="tab"] {
+    border-radius: 10px !important;
+    border: 1px solid var(--vm-border) !important;
+    background: #122133 !important;
+    color: var(--vm-muted) !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, #123445, #15434b) !important;
+    border-color: #1f6f76 !important;
+    color: var(--vm-text) !important;
+}
+
 button[kind="primary"] {
     border-radius: 12px !important;
-    border: 1px solid color-mix(in srgb, var(--vm-accent) 75%, white) !important;
+    border: 1px solid #21d294 !important;
     background: linear-gradient(135deg, var(--vm-accent) 0%, var(--vm-accent-2) 100%) !important;
+    color: #041018 !important;
     font-weight: 600 !important;
 }
 
 button[kind="secondary"] {
     border-radius: 10px !important;
+    background: #152436 !important;
+    border: 1px solid var(--vm-border) !important;
+    color: #d7e5f7 !important;
 }
 
 [data-baseweb="select"] > div,
@@ -117,8 +147,13 @@ button[kind="secondary"] {
 .stTextArea textarea,
 .stNumberInput input {
     border-radius: 10px !important;
-    border: 1px solid color-mix(in srgb, var(--vm-border) 82%, white) !important;
-    background: rgba(255, 255, 255, 0.95) !important;
+    border: 1px solid var(--vm-border) !important;
+    background: #101a28 !important;
+    color: #e7effc !important;
+}
+
+.stTextArea textarea {
+    min-height: 220px;
 }
 
 [data-testid="stNotification"] {
@@ -565,10 +600,24 @@ if not config.app.get("hide_config", False):
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
 llm_provider = config.app.get("llm_provider", "").lower()
-panel = st.columns(3)
-left_panel = panel[0]
-middle_panel = panel[1]
-right_panel = panel[2]
+st.markdown(
+    """
+<div style="margin: 0.3rem 0 1rem 0; padding: 0.8rem 1rem; border-radius: 12px; border: 1px solid #2b3f57; background: linear-gradient(120deg,#142335,#1a2f43); color:#e9f2ff;">
+  <div style="font-weight:700; font-family:'Space Grotesk',sans-serif;">Production Workbench</div>
+  <div style="font-size:0.92rem; opacity:0.88; margin-top:0.2rem;">脚本、素材、音频、字幕都在同一工作流中配置，生成行为保持不变。</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+work_tabs = st.tabs([
+    "Script Lab",
+    "Media & Audio",
+    "Subtitles & Keys",
+])
+left_panel = work_tabs[0]
+middle_panel = work_tabs[1]
+right_panel = work_tabs[2]
 
 params = VideoParams(video_subject="")
 uploaded_files = []
