@@ -14,3 +14,7 @@ redis==5.2.0
 python-multipart==0.0.19
 pyyaml
 requests>=2.31.0
+toml==0.10.2
+
+# Local TTS runtime deps for the current single-env (video) workflow.
+-r tools/local_tts/requirements.cosyvoice-runtime.txt

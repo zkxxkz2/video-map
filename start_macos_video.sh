@@ -7,11 +7,27 @@ cd "$ROOT_DIR"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 TTS_HOST="${TTS_HOST:-127.0.0.1}"
 TTS_PORT="${TTS_PORT:-9880}"
+WEBUI_PORT="${WEBUI_PORT:-8501}"
 
 COSYVOICE_ROOT="$ROOT_DIR/storage/local_tts/CosyVoice-upstream"
 MODEL_DIR="$ROOT_DIR/storage/local_tts/models/CosyVoice-300M-SFT"
 MODELSCOPE_CACHE_DIR="$ROOT_DIR/storage/local_tts/modelscope_cache"
 TTS_LOG="$ROOT_DIR/storage/temp/cosyvoice-server.log"
+
+check_port_available() {
+  local port="$1"
+  local label="$2"
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    local owner
+    owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN | awk 'NR==2 {print $1" (PID "$2")"}')"
+    echo "[ERROR] Port $port is already in use for $label${owner:+ by $owner}."
+    return 1
+  fi
+  echo "[INFO] Port $port is available for $label."
+}
+
+check_port_available "$TTS_PORT" "Local CosyVoice"
+check_port_available "$WEBUI_PORT" "Streamlit WebUI"
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "[ERROR] Python not found: $PYTHON_BIN"
@@ -63,4 +79,5 @@ if ! curl -fsS "http://$TTS_HOST:$TTS_PORT/health" >/dev/null 2>&1; then
 fi
 
 echo "[INFO] Local CosyVoice is ready. Launching WebUI..."
+check_port_available "$WEBUI_PORT" "Streamlit WebUI"
 streamlit run ./webui/Main.py --browser.serverAddress="0.0.0.0" --server.enableCORS=True --browser.gatherUsageStats=False

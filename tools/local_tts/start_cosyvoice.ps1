@@ -53,6 +53,15 @@ if (-not (Test-Path $ModelDir)) {
     throw "CosyVoice model directory not found: $ModelDir"
 }
 
+$ExistingConn = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($ExistingConn) {
+    $OwnerProc = Get-Process -Id $ExistingConn.OwningProcess -ErrorAction SilentlyContinue
+    if ($OwnerProc) {
+        throw "Port $Port is already in use by $($OwnerProc.ProcessName) (PID $($OwnerProc.Id))."
+    }
+    throw "Port $Port is already in use."
+}
+
 $ModelScopeCache = Join-Path $RepoRoot "storage\local_tts\modelscope_cache"
 New-Item -ItemType Directory -Force -Path $ModelScopeCache | Out-Null
 $env:MODELSCOPE_CACHE = $ModelScopeCache

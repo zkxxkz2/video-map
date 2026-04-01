@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from typing import List
 from urllib.parse import urlencode
 
@@ -12,6 +13,72 @@ from app.models.schema import MaterialInfo, VideoAspect, VideoConcatMode
 from app.utils import utils
 
 requested_count = 0
+_last_pexels_request_ts = 0.0
+
+
+def _respect_pexels_interval():
+    global _last_pexels_request_ts
+    min_interval = float(config.app.get("pexels_min_interval_seconds", 0.35))
+    now = time.time()
+    elapsed = now - _last_pexels_request_ts
+    if elapsed < min_interval:
+        time.sleep(min_interval - elapsed)
+    _last_pexels_request_ts = time.time()
+
+
+def _log_pexels_rate_headers(resp: requests.Response):
+    # Headers are available on successful responses and help track monthly quota.
+    limit = resp.headers.get("X-Ratelimit-Limit")
+    remain = resp.headers.get("X-Ratelimit-Remaining")
+    reset = resp.headers.get("X-Ratelimit-Reset")
+    if limit or remain or reset:
+        logger.info(
+            f"pexels quota => limit={limit or '-'}, remaining={remain or '-'}, reset={reset or '-'}"
+        )
+
+
+def _request_pexels_with_retry(url: str, headers: dict) -> requests.Response | None:
+    max_retries = int(config.app.get("pexels_max_retries", 4))
+    base_backoff = float(config.app.get("pexels_backoff_base_seconds", 1.0))
+    timeout = (30, 60)
+
+    for attempt in range(max_retries):
+        _respect_pexels_interval()
+        try:
+            resp = requests.get(
+                url,
+                headers=headers,
+                proxies=config.proxy,
+                verify=False,
+                timeout=timeout,
+            )
+
+            if resp.status_code == 429:
+                wait_seconds = base_backoff * (2**attempt)
+                logger.warning(
+                    f"pexels rate limited (429), retry {attempt + 1}/{max_retries} after {wait_seconds:.1f}s"
+                )
+                time.sleep(wait_seconds)
+                continue
+
+            if resp.status_code >= 500:
+                wait_seconds = base_backoff * (2**attempt)
+                logger.warning(
+                    f"pexels server error ({resp.status_code}), retry {attempt + 1}/{max_retries} after {wait_seconds:.1f}s"
+                )
+                time.sleep(wait_seconds)
+                continue
+
+            _log_pexels_rate_headers(resp)
+            return resp
+        except Exception as e:
+            wait_seconds = base_backoff * (2**attempt)
+            logger.warning(
+                f"pexels request failed ({str(e)}), retry {attempt + 1}/{max_retries} after {wait_seconds:.1f}s"
+            )
+            time.sleep(wait_seconds)
+
+    return None
 
 
 def get_api_key(cfg_key: str):
@@ -50,13 +117,10 @@ def search_videos_pexels(
     logger.info(f"searching videos: {query_url}, with proxies: {config.proxy}")
 
     try:
-        r = requests.get(
-            query_url,
-            headers=headers,
-            proxies=config.proxy,
-            verify=False,
-            timeout=(30, 60),
-        )
+        r = _request_pexels_with_retry(query_url, headers)
+        if r is None:
+            logger.error("search videos failed: pexels request exhausted retries")
+            return []
         response = r.json()
         video_items = []
         if "videos" not in response:
