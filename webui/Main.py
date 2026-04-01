@@ -60,6 +60,13 @@ streamlit_style = """
 html, body, [class*="css"] {
     font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
     color: var(--vm-text);
+    color-scheme: dark;
+}
+
+[data-testid="stApp"],
+.stApp,
+section.main {
+    background: transparent !important;
 }
 
 [data-testid="stAppViewContainer"] {
@@ -71,6 +78,10 @@ html, body, [class*="css"] {
 
 [data-testid="stHeader"] {
     background: transparent;
+}
+
+[data-testid="stToolbar"] {
+    background: transparent !important;
 }
 
 [data-testid="stMainBlockContainer"] {
@@ -154,6 +165,14 @@ button[kind="secondary"] {
 
 .stTextArea textarea {
     min-height: 220px;
+}
+
+[data-testid="stMetricValue"] {
+    color: #f7fbff !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #9eb4ce !important;
 }
 
 [data-testid="stNotification"] {
@@ -623,65 +642,75 @@ params = VideoParams(video_subject="")
 uploaded_files = []
 
 with left_panel:
-    with st.container(border=True):
-        st.write(tr("Video Script Settings"))
-        params.video_subject = st.text_input(
-            tr("Video Subject"),
-            value=st.session_state["video_subject"],
-            key="video_subject_input",
-        ).strip()
+    script_cfg_col, script_out_col = st.columns([0.95, 1.25], gap="medium")
 
-        video_languages = [
-            (tr("Auto Detect"), ""),
-        ]
-        for code in support_locales:
-            video_languages.append((code, code))
+    with script_cfg_col:
+        with st.container(border=True):
+            st.write("Script Controls")
+            params.video_subject = st.text_input(
+                tr("Video Subject"),
+                value=st.session_state["video_subject"],
+                key="video_subject_input",
+            ).strip()
 
-        selected_index = st.selectbox(
-            tr("Script Language"),
-            index=0,
-            options=range(
-                len(video_languages)
-            ),  # Use the index as the internal option value
-            format_func=lambda x: video_languages[x][
-                0
-            ],  # The label is displayed to the user
-        )
-        params.video_language = video_languages[selected_index][1]
+            video_languages = [
+                (tr("Auto Detect"), ""),
+            ]
+            for code in support_locales:
+                video_languages.append((code, code))
 
-        if st.button(
-            tr("Generate Video Script and Keywords"), key="auto_generate_script"
-        ):
-            with st.spinner(tr("Generating Video Script and Keywords")):
-                script = llm.generate_script(
-                    video_subject=params.video_subject, language=params.video_language
-                )
-                terms = llm.generate_terms(params.video_subject, script)
-                if "Error: " in script:
-                    st.error(tr(script))
-                elif "Error: " in terms:
-                    st.error(tr(terms))
-                else:
-                    st.session_state["video_script"] = script
-                    st.session_state["video_terms"] = ", ".join(terms)
-        params.video_script = st.text_area(
-            tr("Video Script"), value=st.session_state["video_script"], height=280
-        )
-        if st.button(tr("Generate Video Keywords"), key="auto_generate_terms"):
-            if not params.video_script:
-                st.error(tr("Please Enter the Video Subject"))
-                st.stop()
+            selected_index = st.selectbox(
+                tr("Script Language"),
+                index=0,
+                options=range(len(video_languages)),
+                format_func=lambda x: video_languages[x][0],
+            )
+            params.video_language = video_languages[selected_index][1]
 
-            with st.spinner(tr("Generating Video Keywords")):
-                terms = llm.generate_terms(params.video_subject, params.video_script)
-                if "Error: " in terms:
-                    st.error(tr(terms))
-                else:
-                    st.session_state["video_terms"] = ", ".join(terms)
+            if st.button(
+                tr("Generate Video Script and Keywords"),
+                key="auto_generate_script",
+                use_container_width=True,
+            ):
+                with st.spinner(tr("Generating Video Script and Keywords")):
+                    script = llm.generate_script(
+                        video_subject=params.video_subject, language=params.video_language
+                    )
+                    terms = llm.generate_terms(params.video_subject, script)
+                    if "Error: " in script:
+                        st.error(tr(script))
+                    elif "Error: " in terms:
+                        st.error(tr(terms))
+                    else:
+                        st.session_state["video_script"] = script
+                        st.session_state["video_terms"] = ", ".join(terms)
 
-        params.video_terms = st.text_area(
-            tr("Video Keywords"), value=st.session_state["video_terms"]
-        )
+            st.caption("先生成完整文案，再用文案生成关键词，匹配度更稳定。")
+
+    with script_out_col:
+        with st.container(border=True):
+            st.write("Script Outputs")
+            params.video_script = st.text_area(
+                tr("Video Script"), value=st.session_state["video_script"], height=300
+            )
+
+            action_cols = st.columns([1, 1])
+            with action_cols[0]:
+                if st.button(tr("Generate Video Keywords"), key="auto_generate_terms", use_container_width=True):
+                    if not params.video_script:
+                        st.error(tr("Please Enter the Video Subject"))
+                        st.stop()
+
+                    with st.spinner(tr("Generating Video Keywords")):
+                        terms = llm.generate_terms(params.video_subject, params.video_script)
+                        if "Error: " in terms:
+                            st.error(tr(terms))
+                        else:
+                            st.session_state["video_terms"] = ", ".join(terms)
+
+            params.video_terms = st.text_area(
+                tr("Video Keywords"), value=st.session_state["video_terms"], height=180
+            )
 
 with middle_panel:
     with st.container(border=True):
@@ -1190,6 +1219,12 @@ with right_panel:
                     config.app["pixabay_api_keys"].remove(delete_key)
                     config.save_config()
                     st.success(tr("Pixabay API Key deleted successfully"))
+
+profile_metrics = st.columns(4)
+profile_metrics[0].metric("Source", str(params.video_source).upper())
+profile_metrics[1].metric("Aspect", str(params.video_aspect))
+profile_metrics[2].metric("Clip(s)", str(params.video_count))
+profile_metrics[3].metric("TTS", str(config.ui.get("tts_server", "-")).upper())
 
 start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
 if start_button:
