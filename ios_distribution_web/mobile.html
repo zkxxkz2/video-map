@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>分发助手提取终端</title>
+    <style>
+        :root {
+            /* iOS System / Minimalist Palette */
+            --bg-base: #f4f4f5;
+            --bg-card: #ffffff;
+            --border-color: #e4e4e7;
+            --text-main: #09090b;
+            --text-muted: #71717a;
+            --brand: #2563eb;
+            --brand-pressed: #1d4ed8;
+            --success: #10b981;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-base: #000000;
+                --bg-card: #1c1c1e;
+                --border-color: #38383a;
+                --text-main: #ffffff;
+                --text-muted: #98989d;
+                --brand: #0a84ff;
+                --brand-pressed: #007aff;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Segmented Control (iOS style tabs) */
+        .segmented-control {
+            display: flex;
+            background-color: rgba(142, 142, 147, 0.12);
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .seg-btn {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            border-radius: 6px;
+            transition: background-color 0.2s;
+            cursor: pointer;
+        }
+
+        .seg-btn.active {
+            background-color: var(--bg-card);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: left;
+            padding: 10px 0;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .view-section {
+            display: none;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .view-section.active {
+            display: flex;
+            animation: fade 0.3s ease;
+        }
+
+        @keyframes fade {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Card Form */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-group label {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            background-color: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px 0;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-bottom-color: var(--brand);
+        }
+
+        .btn-primary {
+            background-color: var(--brand);
+            color: #ffffff;
+            border: none;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+
+        .btn-primary:active {
+            background-color: var(--brand-pressed);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status-msg {
+            display: none;
+            text-align: center;
+            font-size: 13px;
+            color: var(--success);
+            font-weight: 500;
+            margin-top: -10px;
+        }
+
+        /* History List */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .history-item {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-date {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-tag {
+            font-size: 12px;
+            color: var(--success);
+        }
+
+        .status-tag.old {
+            color: var(--text-muted);
+        }
+
+        .history-file {
+            font-family: ui-monospace, SFMono-Regular, monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+            background-color: rgba(142, 142, 147, 0.1);
+            padding: 8px;
+            border-radius: 6px;
+            word-break: break-all;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>分发提取助手</h1>
+            <p>请填入您的设备登记号获取今日视频素材。</p>
+        </div>
+
+        <div class="segmented-control">
+            <div class="seg-btn active" onclick="switchView('today', this)">获取任务</div>
+            <div class="seg-btn" onclick="switchView('history', this)">历史记录</div>
+        </div>
+
+        <!-- Today View -->
+        <div id="view-today" class="view-section active">
+            <div class="card">
+                <div class="input-group">
+                    <label>设备识别号 (Device ID)</label>
+                    <input type="text" id="deviceId" placeholder="输入编号，如: iPhone_162" autocomplete="off">
+                </div>
+
+                <button class="btn-primary" id="fetchBtn" onclick="fetchVideo()">
+                    获取今日视频
+                </button>
+
+                <div id="statusMsg" class="status-msg">
+                    ✅ 视频获取成功，已保存至系统相册。
+                </div>
+            </div>
+        </div>
+
+        <!-- History View -->
+        <div id="view-history" class="view-section">
+            <div class="history-list" id="historyList">
+                <div class="empty-state">请输入设备识别号以查询本机的提取记录。</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const savedId = localStorage.getItem('matrix_device_id');
+        if (savedId) document.getElementById('deviceId').value = savedId;
+
+        function switchView(viewName, el) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('view-' + viewName).classList.add('active');
+            el.classList.add('active');
+
+            if (viewName === 'history') {
+                loadHistory(document.getElementById('deviceId').value.trim());
+            }
+        }
+
+        function loadHistory(deviceId) {
+            const list = document.getElementById('historyList');
+            if (!deviceId) {
+                list.innerHTML = `<div class="empty-state">请输入正确设备标识以查询记录。</div>`;
+                return;
+            }
+
+            // Clean mock data
+            list.innerHTML = `
+                <div class="history-item">
+                    <div class="history-header">
+                        <span class="history-date">今天 10:05</span>
+                        <span class="status-tag">成功保存</span>
+                    </div>
+                    <div class="history-file">media_x22y_h265.mp4<br>特征码: 0x9cC2...11</div>
+                </div>
+                <div class="history-item">
+                    <div class="history-header">
+                        <span class="history-date" style="color:var(--text-muted)">昨天 09:44</span>
+                        <span class="status-tag old">已归档</span>
+                    </div>
+                    <div class="history-file">media_b82a_h265.mp4</div>
+                </div>
+            `;
+        }
+
+        function fetchVideo() {
+            const deviceId = document.getElementById('deviceId').value.trim();
+            if (!deviceId) { alert('请输入设备标识号'); return; }
+
+            localStorage.setItem('matrix_device_id', deviceId);
+            const btn = document.getElementById('fetchBtn');
+            const msg = document.getElementById('statusMsg');
+
+            btn.disabled = true;
+            btn.textContent = '服务器拉取中...';
+            msg.style.display = 'none';
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = '获取今日视频';
+                msg.style.display = 'block';
+                setTimeout(() => msg.style.display = 'none', 3000);
+            }, 1000);
+        }
+    </script>
+</body>
+
+</html>
