@@ -1,4 +1,4 @@
-# MoneyPrinterTurbo 在 Mac mini 使用指南（单环境 + 本地 CosyVoice）
+# Video-Map 在 Mac mini 使用指南（单环境 + 本地 CosyVoice）
 
 本指南适用于你当前这套改造后的项目：
 - WebUI 与本地 TTS 使用同一个 Python 环境（推荐 conda 环境名 `video`）
@@ -6,7 +6,7 @@
 
 ## 1. 迁移前要打包哪些内容
 
-从当前机器拷走整个项目目录 `MoneyPrinterTurbo`，并确保以下路径存在：
+从当前机器拷走整个项目目录 `video-map`，并确保以下路径存在：
 
 - `storage/local_tts/models/CosyVoice-300M-SFT`
 - `storage/local_tts/CosyVoice-upstream`
@@ -37,7 +37,7 @@ conda activate video
 进入项目目录（示例）：
 
 ```bash
-cd /path/to/MoneyPrinterTurbo
+cd /path/to/video-map
 ```
 
 ## 4. 一键启动（推荐）

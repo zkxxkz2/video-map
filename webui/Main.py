@@ -43,8 +43,94 @@ st.set_page_config(
 
 streamlit_style = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+:root {
+    --vm-bg-0: #f4f6f8;
+    --vm-bg-1: #e8edf2;
+    --vm-panel: rgba(255, 255, 255, 0.86);
+    --vm-panel-strong: rgba(255, 255, 255, 0.96);
+    --vm-border: rgba(17, 54, 83, 0.15);
+    --vm-text: #162330;
+    --vm-accent: #0e7490;
+    --vm-accent-2: #1f9bb5;
+}
+
+html, body, [class*="css"] {
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    color: var(--vm-text);
+}
+
+[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at 10% 8%, rgba(31, 155, 181, 0.16) 0%, rgba(31, 155, 181, 0) 35%),
+        radial-gradient(circle at 90% 4%, rgba(14, 116, 144, 0.10) 0%, rgba(14, 116, 144, 0) 40%),
+        linear-gradient(145deg, var(--vm-bg-0) 0%, var(--vm-bg-1) 100%);
+}
+
+[data-testid="stHeader"] {
+    background: transparent;
+}
+
+[data-testid="stMainBlockContainer"] {
+    padding-top: 1.2rem;
+    max-width: 1380px;
+}
+
+h1, h2, h3 {
+    font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+    letter-spacing: 0.01em;
+}
+
 h1 {
     padding-top: 0 !important;
+    font-weight: 700;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 18px;
+    border: 1px solid var(--vm-border);
+    background: var(--vm-panel);
+    box-shadow: 0 14px 34px rgba(18, 33, 53, 0.07);
+    backdrop-filter: blur(8px);
+}
+
+[data-testid="stExpander"] {
+    border-radius: 14px;
+    border: 1px solid var(--vm-border);
+    background: var(--vm-panel-strong);
+}
+
+button[kind="primary"] {
+    border-radius: 12px !important;
+    border: 1px solid color-mix(in srgb, var(--vm-accent) 75%, white) !important;
+    background: linear-gradient(135deg, var(--vm-accent) 0%, var(--vm-accent-2) 100%) !important;
+    font-weight: 600 !important;
+}
+
+button[kind="secondary"] {
+    border-radius: 10px !important;
+}
+
+[data-baseweb="select"] > div,
+.stTextInput > div > div > input,
+.stTextArea textarea,
+.stNumberInput input {
+    border-radius: 10px !important;
+    border: 1px solid color-mix(in srgb, var(--vm-border) 82%, white) !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+}
+
+[data-testid="stNotification"] {
+    border-radius: 12px;
+}
+
+@media (max-width: 960px) {
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 0.7rem;
+        padding-left: 0.7rem;
+        padding-right: 0.7rem;
+    }
 }
 </style>
 """
@@ -277,8 +363,8 @@ if not config.app.get("hide_config", False):
                             ##### Ollama配置说明
                             - **API Key**: 随便填写，比如 123
                             - **Base Url**: 一般为 http://localhost:11434/v1
-                                - 如果 `MoneyPrinterTurbo` 和 `Ollama` **不在同一台机器上**，需要填写 `Ollama` 机器的IP地址
-                                - 如果 `MoneyPrinterTurbo` 是 `Docker` 部署，建议填写 `http://host.docker.internal:11434/v1`
+                                - 如果 `Video-Map` 和 `Ollama` **不在同一台机器上**，需要填写 `Ollama` 机器的IP地址
+                                - 如果 `Video-Map` 是 `Docker` 部署，建议填写 `http://host.docker.internal:11434/v1`
                             - **Model Name**: 使用 `ollama list` 查看，比如 `qwen:7b`
                             """
 
@@ -577,6 +663,42 @@ with middle_panel:
         )
         params.video_source = video_sources[selected_index][1]
         config.app["video_source"] = params.video_source
+
+        if params.video_source == "pexels":
+            with st.expander("Pexels API Advanced", expanded=False):
+                pexels_per_page = int(config.app.get("pexels_per_page", 20))
+                pexels_per_page = min(max(pexels_per_page, 1), 80)
+                config.app["pexels_per_page"] = st.slider(
+                    "Pexels per_page", min_value=1, max_value=80, value=pexels_per_page
+                )
+
+                pexels_size_options = ["auto", "small", "medium", "large"]
+                saved_size = config.app.get("pexels_size", "")
+                if saved_size not in ["", "small", "medium", "large"]:
+                    saved_size = ""
+                size_index = pexels_size_options.index(saved_size if saved_size else "auto")
+                selected_size = st.selectbox(
+                    "Pexels size",
+                    options=pexels_size_options,
+                    index=size_index,
+                )
+                config.app["pexels_size"] = "" if selected_size == "auto" else selected_size
+
+                config.app["pexels_locale"] = st.text_input(
+                    "Pexels locale (optional)",
+                    value=config.app.get("pexels_locale", ""),
+                    help="Examples: en-US, zh-CN, ja-JP",
+                ).strip()
+
+                pexels_page = int(config.app.get("pexels_page", 1) or 1)
+                pexels_page = max(1, pexels_page)
+                config.app["pexels_page"] = st.number_input(
+                    "Pexels page",
+                    min_value=1,
+                    max_value=999,
+                    value=pexels_page,
+                    step=1,
+                )
 
         if params.video_source == "local":
             uploaded_files = st.file_uploader(

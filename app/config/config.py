@@ -10,7 +10,7 @@ config_file = f"{root_dir}/config.toml"
 
 
 def load_config():
-    # fix: IsADirectoryError: [Errno 21] Is a directory: '/MoneyPrinterTurbo/config.toml'
+    # fix: IsADirectoryError: [Errno 21] Is a directory: '/video-map/config.toml'
     if os.path.isdir(config_file):
         shutil.rmtree(config_file)
 

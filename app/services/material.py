@@ -111,9 +111,27 @@ def search_videos_pexels(
         "Authorization": api_key,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     }
-    # Build URL
-    params = {"query": search_term, "per_page": 20, "orientation": video_orientation}
-    query_url = f"https://api.pexels.com/videos/search?{urlencode(params)}"
+    # Build URL with extended options from config.
+    per_page = int(config.app.get("pexels_per_page", 20))
+    per_page = min(max(per_page, 1), 80)
+    params = {
+        "query": search_term,
+        "per_page": per_page,
+        "orientation": video_orientation,
+    }
+
+    pexels_size = str(config.app.get("pexels_size", "")).strip().lower()
+    if pexels_size in {"small", "medium", "large"}:
+        params["size"] = pexels_size
+
+    pexels_locale = str(config.app.get("pexels_locale", "")).strip()
+    if pexels_locale:
+        params["locale"] = pexels_locale
+
+    pexels_page = int(config.app.get("pexels_page", 1) or 1)
+    params["page"] = max(1, pexels_page)
+
+    query_url = f"https://api.pexels.com/v1/videos/search?{urlencode(params)}"
     logger.info(f"searching videos: {query_url}, with proxies: {config.proxy}")
 
     try:

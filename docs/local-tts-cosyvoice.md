@@ -8,7 +8,7 @@ This project can call a locally deployed CosyVoice SFT service for offline TTS.
 - Model source: ModelScope
 - Recommended model for this project: `iic/CosyVoice-300M-SFT`
 
-This model exposes built-in speakers, so it fits the current MoneyPrinterTurbo workflow without voice cloning or training.
+This model exposes built-in speakers, so it fits the current Video-Map workflow without voice cloning or training.
 
 ## Bootstrap
 
@@ -59,7 +59,7 @@ If the service is healthy, the script will:
 - synthesize a short test sentence
 - save a `.wav` file under `storage/temp/cosyvoice-verify.wav`
 
-## MoneyPrinterTurbo integration
+## Video-Map integration
 
 After the local service is running:
 

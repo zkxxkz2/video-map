@@ -1,6 +1,6 @@
-# MoneyPrinterTurbo Test Directory
+# Video-Map Test Directory
 
-This directory contains unit tests for the **MoneyPrinterTurbo** project.
+This directory contains unit tests for the **Video-Map** project.
 
 ## Directory Structure
 
